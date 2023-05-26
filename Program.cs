@@ -1,6 +1,13 @@
-using System.Text.RegularExpressions;
-using System.Xml.Linq;
 using TestTask.Models;
+using System.Security.Cryptography;
+using System.Text;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication;
+using System.Security.Claims;
+using TestTask.Logger;
+using System.Text.Json.Serialization;
+using System.Text.Json;
 
 namespace TestTask
 {
@@ -8,163 +15,253 @@ namespace TestTask
   {
     public static void Main(string[] args)
     {
-      using (ApplicationContext db = new ApplicationContext())
-      {
-        // добавляем их в бд
-        var hui = db.DirectoryBrands.Where(t => t.Id == 1).FirstOrDefault();
-        int a = hui.Id;
-      }
-      // начальные данные
-      List<Person> users = new List<Person>
-{
-    new() { Id = Guid.NewGuid().ToString(), Name = "Tom", Age = 37 },
-    new() { Id = Guid.NewGuid().ToString(), Name = "Bob", Age = 41 },
-    new() { Id = Guid.NewGuid().ToString(), Name = "Sam", Age = 24 }
-};
+      #region Первоначальные настройки приложения
+      ApplicationContext db = new ApplicationContext();
 
-      var builder = WebApplication.CreateBuilder();
+      var builder = WebApplication.CreateBuilder();    
+      
+      builder.Services.AddControllers().AddJsonOptions(x =>
+                      x.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles);
+
+      // Настройка авторизации
+      builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+  .AddCookie(options => options.LoginPath = "/login");
+      builder.Services.AddAuthorization();
+
+      // Настройка хранения логов
+      string pathLog = System.Configuration.ConfigurationManager.AppSettings["LogsPath"];
+      if (string.IsNullOrEmpty(pathLog))
+        throw new Exception("Путь логирования не задан.");
+
+      builder.Logging.AddFile(Path.Combine(
+        pathLog,
+        $"log-{DateTime.Now.ToString("d")}.log"));
+
       var app = builder.Build();
 
-      app.Run(async (context) =>
-      {
-        var response = context.Response;
-        var request = context.Request;
-        var path = request.Path;
-        //string expressionForNumber = "^/api/users/([0-9]+)$";   // если id представляет число
+      // Указания приложению использовать авторизацию и аунтификацию
+      app.UseAuthentication();
+      app.UseAuthorization();
 
-        // 2e752824-1657-4c7f-844b-6ec2e168e99c
-        string expressionForGuid = @"^/api/users/\w{8}-\w{4}-\w{4}-\w{4}-\w{12}$";
-        if (path == "/api/users" && request.Method == "GET")
+      // Указания приложению давать возможность использовать файлы (нужно для использования html страниц)
+      app.UseDefaultFiles();
+      app.UseStaticFiles();
+      #endregion
+
+      #region Основные страницы
+      app.MapGet("/login", async (HttpContext context) =>
+      {
+
+        if (context.User.Identity.IsAuthenticated)
         {
-          await GetAllPeople(response);
-        }
-        else if (Regex.IsMatch(path, expressionForGuid) && request.Method == "GET")
-        {
-          // получаем id из адреса url
-          string? id = path.Value?.Split("/")[3];
-          await GetPerson(id, response);
-        }
-        else if (path == "/api/users" && request.Method == "POST")
-        {
-          await CreatePerson(response, request);
-        }
-        else if (path == "/api/users" && request.Method == "PUT")
-        {
-          await UpdatePerson(response, request);
-        }
-        else if (Regex.IsMatch(path, expressionForGuid) && request.Method == "DELETE")
-        {
-          string? id = path.Value?.Split("/")[3];
-          await DeletePerson(id, response);
+          context.Response.Redirect("/home");
         }
         else
         {
-          response.ContentType = "text/html; charset=utf-8";
-          await response.SendFileAsync("html/index.html");
+          context.Response.ContentType = "text/html; charset=utf-8";
+          await context.Response.SendFileAsync("wwwroot/login.html");
         }
       });
 
+      app.MapPost("/login", async (string? returnUrl, HttpContext context) =>
+      {
+        // получаем из формы email и пароль
+        var form = context.Request.Form;
+        // если email и/или пароль не установлены, посылаем статусный код ошибки 400
+        if (!form.ContainsKey("login") || !form.ContainsKey("password"))
+          return Results.BadRequest("Email и/или пароль не установлены");
+
+        string email = form["login"];
+        string password = form["password"];
+
+        // находим пользователя 
+        User? user = null;
+
+        using (ApplicationContext db = new ApplicationContext())
+        {
+          var md5 = MD5.Create();
+          var hash = md5.ComputeHash(Encoding.UTF8.GetBytes(password));
+          var hashPassword = Convert.ToBase64String(hash);
+
+          user = db.Users.Where(t => t.Login == email && hashPassword == t.HashPassword).FirstOrDefault();
+        }
+
+        // если пользователь не найден, отправляем статусный код 401
+        if (user == null) return Results.Unauthorized();
+
+        var claims = new List<Claim> { new Claim(ClaimTypes.Name, user.Login) };
+
+        // создаем объект ClaimsIdentity
+        ClaimsIdentity claimsIdentity = new ClaimsIdentity(claims, "Cookies");
+
+        // установка аутентификационных куки
+        await context.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(claimsIdentity));
+        return Results.Redirect(returnUrl ?? "/home");
+      });
+
+      app.MapGet("/logout", async (HttpContext context) =>
+      {
+        await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        return Results.Redirect("/login");
+      });
+
+      app.MapGet("/home", [Authorize] async (HttpContext context) =>
+      {
+        context.Response.ContentType = "text/html; charset=utf-8";
+        await context.Response.SendFileAsync("wwwroot/index.html");
+      });
+      #endregion
+
+      #region API
+
+      #region GET запросы
+      app.MapGet("/Api/{entity}", [Authorize] async (string entity) =>
+      {
+        Type entityObjectType = APIManager.GetEntityType(entity);
+        if (entityObjectType == null)       
+          return Results.NotFound();
+
+        JsonSerializerOptions options = new()
+        {
+          ReferenceHandler = ReferenceHandler.Preserve
+        };
+
+        object entities = await APIManager.GetEntitiesAsync(app, entityObjectType, $"API, get all {entity}s", db);
+        return Results.Json(entities, options);
+      });
+
+      app.MapGet("/Api/{entity}/{id}", async (string entity, int id) =>
+      {
+        app.Logger.LogInformation($"[{DateTime.Now.ToShortTimeString()}]: API, get {entity} by id {id}");
+
+        try
+        {
+          Type entityType = APIManager.GetEntityType(entity);
+
+          if (entityType == null)
+            return Results.NotFound(new { message = $"{entity} не найден" });
+
+          var entityObject = APIManager.GetEntityObjectById(entityType, db, id);
+          if (entityObject == null)
+            return Results.NotFound(new { message = $"{entity} не найден" });
+
+          return Results.Json(entityObject);
+        }
+        catch (Exception ex)
+        {
+          app.Logger.LogError($"[{DateTime.Now.ToShortTimeString()}]: {ex.Message}");
+          return Results.BadRequest(ex);
+        }
+      });
+      #endregion
+
+      #region POST запросы
+      app.MapPost("/Api/{entity}", [Authorize] async (string entity, HttpContext context) =>
+      {
+        app.Logger.LogInformation($"[{DateTime.Now.ToShortTimeString()}]: API, create {entity}.");
+
+        try
+        {
+          // Чтение JSON-тела запроса
+          string requestBody = await new StreamReader(context.Request.Body).ReadToEndAsync();
+
+          // Десериализация JSON в объект нужного типа
+          Type entityType = APIManager.GetEntityType(entity);
+          var entityObject = APIManager.ConvertToEntityObject(entityType, requestBody);
+
+          if (entityObject == null)         
+            return Results.BadRequest(new { message = $"Некорректный запрос для {entity}" });
+          
+          // Добавление объекта в базу данных
+          db.Add(entityObject);
+          await db.SaveChangesAsync();
+
+          // Возвращение результата с кодом 201 (Created)
+          string entityId = (entityObject as BaseEntity)?.Id.ToString();
+          return Results.Created($"/api/{entity}/{entityId}", entityObject);
+        }
+        catch (Exception ex)
+        {
+          app.Logger.LogError($"[{DateTime.Now.ToShortTimeString()}]: {ex.Message}");
+          return Results.BadRequest(ex);
+        }
+      });
+
+      #endregion
+
+      #region UPDATE запросы
+
+      app.MapPut("/Api/{entity}/{id}", [Authorize] async (string entity, int id, HttpContext context) =>
+      {
+        app.Logger.LogInformation($"[{DateTime.Now.ToShortTimeString()}]: API, update {entity} with ID {id}.");
+
+        try
+        {
+          // Чтение JSON-тела запроса
+          string requestBody = await new StreamReader(context.Request.Body).ReadToEndAsync();
+
+          // Десериализация JSON в объект нужного типа
+          Type entityType = APIManager.GetEntityType(entity);
+          var entityObject = APIManager.ConvertToEntityObject(entityType, requestBody);
+
+          // Получение объекта из базы данных по указанному ID
+          var existingEntity = await APIManager.GetEntityObjectById(entityType, db, id);
+
+          if (existingEntity == null)          
+            return Results.NotFound();
+          
+
+          // Обновление свойств объекта на основе полученных данных
+          APIManager.UpdateEntityProperties(existingEntity, entityObject);
+
+          await db.SaveChangesAsync();
+
+          return Results.Ok();
+        }
+        catch (Exception ex)
+        {
+          app.Logger.LogError($"[{DateTime.Now.ToShortTimeString()}]: {ex.Message}");
+          return Results.BadRequest(ex);
+        }
+      });
+      #endregion
+
+      #region DELETE запросы
+      app.MapDelete("/Api/{entity}/{id}", [Authorize] async (string entity, int id) =>
+      {
+        app.Logger.LogInformation($"[{DateTime.Now.ToShortTimeString()}]: API, delete {entity} with ID {id}.");
+
+        try
+        {
+          Type entityType = APIManager.GetEntityType(entity);
+          // Получение объекта из базы данных по указанному ID
+          var existingEntity = await APIManager.GetEntityObjectById(entityType, db, id);
+
+          if (existingEntity == null)          
+            return Results.NotFound();
+          
+          // Удаление объекта из базы данных
+          db.Remove(existingEntity);
+          await db.SaveChangesAsync();
+
+          return Results.Ok();
+        }
+        catch (Exception ex)
+        {
+          app.Logger.LogError($"[{DateTime.Now.ToShortTimeString()}]: {ex.Message}");
+          return Results.BadRequest(ex);
+        }
+      });
+      #endregion
+
+      #endregion
+
+      app.Logger.LogInformation($"[{DateTime.Now.ToShortTimeString()}]: Starting the app");
       app.Run();
 
-      // получение всех пользователей
-      async Task GetAllPeople(HttpResponse response)
-      {
-        await response.WriteAsJsonAsync(users);
-      }
-      // получение одного пользователя по id
-      async Task GetPerson(string? id, HttpResponse response)
-      {
-        // получаем пользователя по id
-        Person? user = users.FirstOrDefault((u) => u.Id == id);
-        // если пользователь найден, отправляем его
-        if (user != null)
-          await response.WriteAsJsonAsync(user);
-        // если не найден, отправляем статусный код и сообщение об ошибке
-        else
-        {
-          response.StatusCode = 404;
-          await response.WriteAsJsonAsync(new { message = "Пользователь не найден" });
-        }
-      }
-
-      async Task DeletePerson(string? id, HttpResponse response)
-      {
-        // получаем пользователя по id
-        Person? user = users.FirstOrDefault((u) => u.Id == id);
-        // если пользователь найден, удаляем его
-        if (user != null)
-        {
-          users.Remove(user);
-          await response.WriteAsJsonAsync(user);
-        }
-        // если не найден, отправляем статусный код и сообщение об ошибке
-        else
-        {
-          response.StatusCode = 404;
-          await response.WriteAsJsonAsync(new { message = "Пользователь не найден" });
-        }
-      }
-
-      async Task CreatePerson(HttpResponse response, HttpRequest request)
-      {
-        try
-        {
-          // получаем данные пользователя
-          var user = await request.ReadFromJsonAsync<Person>();
-          if (user != null)
-          {
-            // устанавливаем id для нового пользователя
-            user.Id = Guid.NewGuid().ToString();
-            // добавляем пользователя в список
-            users.Add(user);
-            await response.WriteAsJsonAsync(user);
-          }
-          else
-          {
-            throw new Exception("Некорректные данные");
-          }
-        }
-        catch (Exception)
-        {
-          response.StatusCode = 400;
-          await response.WriteAsJsonAsync(new { message = "Некорректные данные" });
-        }
-      }
-
-      async Task UpdatePerson(HttpResponse response, HttpRequest request)
-      {
-        try
-        {
-          // получаем данные пользователя
-          Person? userData = await request.ReadFromJsonAsync<Person>();
-          if (userData != null)
-          {
-            // получаем пользователя по id
-            var user = users.FirstOrDefault(u => u.Id == userData.Id);
-            // если пользователь найден, изменяем его данные и отправляем обратно клиенту
-            if (user != null)
-            {
-              user.Age = userData.Age;
-              user.Name = userData.Name;
-              await response.WriteAsJsonAsync(user);
-            }
-            else
-            {
-              response.StatusCode = 404;
-              await response.WriteAsJsonAsync(new { message = "Пользователь не найден" });
-            }
-          }
-          else
-          {
-            throw new Exception("Некорректные данные");
-          }
-        }
-        catch (Exception)
-        {
-          response.StatusCode = 400;
-          await response.WriteAsJsonAsync(new { message = "Некорректные данные" });
-        }
-      }
     }
   }
+
+  
+
 }

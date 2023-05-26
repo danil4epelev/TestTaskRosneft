@@ -1,11 +1,54 @@
 {
   "Version": 1,
-  "Hash": "7unHhBNvWMgQ870b5SxyZVPcdJqQ5kdWmRJO3ft9254=",
+  "Hash": "+nPcKONuknzgoMS6jMlq6FG0DRJUdoZbbn5VdRQTr5M=",
   "Source": "TestTask",
   "BasePath": "_content/TestTask",
   "Mode": "Default",
   "ManifestType": "Build",
   "ReferencedProjectsConfiguration": [],
-  "DiscoveryPatterns": [],
-  "Assets": []
+  "DiscoveryPatterns": [
+    {
+      "Name": "TestTask\\wwwroot",
+      "Source": "TestTask",
+      "ContentRoot": "D:\\Job\\TestTask\\TestTaskRosneft\\wwwroot\\",
+      "BasePath": "_content/TestTask",
+      "Pattern": "**"
+    }
+  ],
+  "Assets": [
+    {
+      "Identity": "D:\\Job\\TestTask\\TestTaskRosneft\\wwwroot\\index.html",
+      "SourceId": "TestTask",
+      "SourceType": "Discovered",
+      "ContentRoot": "D:\\Job\\TestTask\\TestTaskRosneft\\wwwroot\\",
+      "BasePath": "_content/TestTask",
+      "RelativePath": "index.html",
+      "AssetKind": "All",
+      "AssetMode": "All",
+      "AssetRole": "Primary",
+      "RelatedAsset": "",
+      "AssetTraitName": "",
+      "AssetTraitValue": "",
+      "CopyToOutputDirectory": "Never",
+      "CopyToPublishDirectory": "PreserveNewest",
+      "OriginalItemSpec": "wwwroot\\index.html"
+    },
+    {
+      "Identity": "D:\\Job\\TestTask\\TestTaskRosneft\\wwwroot\\login.html",
+      "SourceId": "TestTask",
+      "SourceType": "Discovered",
+      "ContentRoot": "D:\\Job\\TestTask\\TestTaskRosneft\\wwwroot\\",
+      "BasePath": "_content/TestTask",
+      "RelativePath": "login.html",
+      "AssetKind": "All",
+      "AssetMode": "All",
+      "AssetRole": "Primary",
+      "RelatedAsset": "",
+      "AssetTraitName": "",
+      "AssetTraitValue": "",
+      "CopyToOutputDirectory": "Never",
+      "CopyToPublishDirectory": "PreserveNewest",
+      "OriginalItemSpec": "wwwroot\\login.html"
+    }
+  ]
 }

@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "D:\\Job\\TestTask\\TestTask\\TestTask.csproj": {}
+    "D:\\Job\\TestTask\\TestTaskRosneft\\TestTask.csproj": {}
   },
   "projects": {
-    "D:\\Job\\TestTask\\TestTask\\TestTask.csproj": {
+    "D:\\Job\\TestTask\\TestTaskRosneft\\TestTask.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "D:\\Job\\TestTask\\TestTask\\TestTask.csproj",
+        "projectUniqueName": "D:\\Job\\TestTask\\TestTaskRosneft\\TestTask.csproj",
         "projectName": "TestTask",
-        "projectPath": "D:\\Job\\TestTask\\TestTask\\TestTask.csproj",
+        "projectPath": "D:\\Job\\TestTask\\TestTaskRosneft\\TestTask.csproj",
         "packagesPath": "C:\\Users\\verba\\.nuget\\packages\\",
-        "outputPath": "D:\\Job\\TestTask\\TestTask\\obj\\",
+        "outputPath": "D:\\Job\\TestTask\\TestTaskRosneft\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\verba\\AppData\\Roaming\\NuGet\\NuGet.Config",
@@ -45,19 +45,23 @@
               "target": "Package",
               "version": "[7.0.5, )"
             },
+            "Microsoft.EntityFrameworkCore.Proxies": {
+              "target": "Package",
+              "version": "[7.0.5, )"
+            },
             "Microsoft.EntityFrameworkCore.Tools": {
               "include": "Runtime, Build, Native, ContentFiles, Analyzers, BuildTransitive",
               "suppressParent": "All",
               "target": "Package",
               "version": "[7.0.5, )"
             },
+            "Newtonsoft.Json": {
+              "target": "Package",
+              "version": "[13.0.3, )"
+            },
             "Npgsql.EntityFrameworkCore.PostgreSQL": {
               "target": "Package",
               "version": "[7.0.4, )"
-            },
-            "Swashbuckle.AspNetCore": {
-              "target": "Package",
-              "version": "[6.2.3, )"
             },
             "System.Configuration.ConfigurationManager": {
               "target": "Package",

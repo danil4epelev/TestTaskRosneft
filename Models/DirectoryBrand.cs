@@ -1,15 +1,10 @@
-using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace TestTask.Models
 {
   [Table("directory_brands")]
-  public class DirectoryBrand
+  public class DirectoryBrand : BaseEntity
   {
-    [Key]
-    [Column("id")]
-    public int Id { get; set; }
-
     [Column("code")]
     public string? Code { get; set; }
 
